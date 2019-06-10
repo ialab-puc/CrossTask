@@ -5,37 +5,37 @@ def parse_args():
     parser.add_argument(
         '--primary_path',
         type=str,
-        default='crosstask_release/tasks_primary.txt',
+        default='/mnt/nas/GrimaRepo/datasets/CrossTask/crosstask_release/tasks_primary.txt',
         help='list of primary tasks')
     parser.add_argument(
         '--related_path',
         type=str,
-        default='crosstask_release/tasks_related.txt',
+        default='/mnt/nas/GrimaRepo/datasets/CrossTask/crosstask_release/tasks_related.txt',
         help='list of related tasks')
     parser.add_argument(
         '--annotation_path',
         type=str,
-        default='crosstask_release/annotations',
+        default='/mnt/nas/GrimaRepo/datasets/CrossTask/crosstask_release/annotations',
         help='path to annotations')
     parser.add_argument(
         '--video_csv_path',
         type=str,
-        default='crosstask_release/videos.csv',
+        default='/mnt/nas/GrimaRepo/datasets/CrossTask/crosstask_release/videos.csv',
         help='path to video csv')
     parser.add_argument(
         '--val_csv_path',
         type=str,
-        default='crosstask_release/videos_val.csv',
+        default='/mnt/nas/GrimaRepo/datasets/CrossTask/crosstask_release/videos_val.csv',
         help='path to validation csv')
     parser.add_argument(
         '--features_path',
         type=str,
-        default='crosstask_features',
+        default='/mnt/nas/GrimaRepo/datasets/CrossTask/crosstask_features',
         help='path to features')
     parser.add_argument(
         '--constraints_path',
         type=str,
-        default='crosstask_constraints',
+        default='/mnt/nas/GrimaRepo/datasets/CrossTask/crosstask_constraints',
         help='path to constraints')
     parser.add_argument(
         '--n_train',
@@ -50,7 +50,7 @@ def parse_args():
     parser.add_argument(
         '-q',
         type=float,
-        default=0.7,
+        default=0.3,
         help='regularization parameter')
     parser.add_argument(
         '--epochs',
@@ -60,7 +60,7 @@ def parse_args():
     parser.add_argument(
         '--pretrain_epochs',
         type=int,
-        default=30,
+        default=0,
         help='number of pre-training epochs')
     parser.add_argument(
         '--batch_size',
@@ -76,13 +76,13 @@ def parse_args():
     parser.add_argument(
         '--use_related',
         type=int,
-        default=1,
+        default=0,
         help='1 for using related tasks during training, 0 for using primary tasks only'
         )
     parser.add_argument(
         '--use_gpu',
         type=int,
-        default=0,
+        default=1,
         )
     parser.add_argument(
         '-d',

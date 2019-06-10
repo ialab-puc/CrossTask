@@ -2,15 +2,181 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import unicode_literals
 from __future__ import print_function
-
+import copy, math
 import torch.nn as nn
+import torch.nn.functional as F
+import torch
+from torch.autograd import Variable
+
+def clones(module, N):
+    "Produce N identical layers."
+    return nn.ModuleList([copy.deepcopy(module) for _ in range(N)])
+
+# def make_model(src_vocab, tgt_vocab, N=6, 
+#                d_model=512, d_ff=2048, h=8, dropout=0.1):
+#     "Helper: Construct a model from hyperparameters."
+#     c = copy.deepcopy
+#     attn = MultiHeadedAttention(h, d_model)
+#     ff = PositionwiseFeedForward(d_model, d_ff, dropout)
+#     position = PositionalEncoding(d_model, dropout)
+#     model = EncoderDecoder(
+#         Encoder(EncoderLayer(d_model, c(attn), c(ff), dropout), N),
+#         # Decoder(DecoderLayer(d_model, c(attn), c(attn), 
+#                              # c(ff), dropout), N),
+#         # nn.Sequential(Embeddings(d_model, src_vocab), c(position)),
+#         # nn.Sequential(Embeddings(d_model, tgt_vocab), c(position)),
+#         # Generator(d_model, tgt_vocab)
+#         )
+    
+#     # This was important from their code. 
+#     # Initialize parameters with Glorot / fan_avg.
+#     for p in model.parameters():
+#         if p.dim() > 1:
+#             nn.init.xavier_uniform(p)
+#     return model
 
 class Model(nn.Module):
-    def __init__(self, d, M, A, q):
+    def __init__(self, M, A, dropout, d_model=3200, residual_dropout=0.1, num_heads=8, attn_depth=3):
         super(Model, self).__init__()
-        self.fc = nn.Linear(d,M)
-        self.m = nn.Dropout(p=q)
         self.A = A
+
+        # Self Attention modules
+        c = copy.deepcopy
+        attn = nn.MultiheadAttention(d_model, num_heads)
+        ff = PositionwiseFeedForward(d_model, d_model, dropout)
+        self.position_encoder = PositionalEncoding(d_model, dropout)
+        self.encoder = Encoder(EncoderLayer(d_model, c(attn), c(ff), residual_dropout), attn_depth)
+
+        # Prediction layer
+        self.fc_out = nn.Linear(d_model, M)
+        self.dropout = nn.Dropout(p=dropout)
+
+        # Initialize parameters
+        self.initialize_parameters()
         
     def forward(self, x, task):
-        return self.fc(self.m(x)).matmul(self.A[task])
+        # Include positional encoding
+        out = self.position_encoder(x)
+        # Compute Self Attention
+        out = self.encoder(out)
+        # Compute predictions
+        out = self.fc_out(self.dropout(out)).matmul(self.A[task])
+        return out
+
+    def initialize_parameters(self):
+        # Initialize parameters with Glorot / fan_avg.
+        for p in self.parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p)
+
+# class EncoderDecoder(nn.Module):
+#     """
+#     A standard Encoder-Decoder architecture. Base for this and many 
+#     other models.
+#     """
+#     def __init__(self, encoder, src_embed, tgt_embed, generator):
+#         super(EncoderDecoder, self).__init__()
+#         self.encoder = encoder
+#         # self.decoder = decoder
+#         self.src_embed = src_embed
+#         self.tgt_embed = tgt_embed
+#         self.generator = generator
+
+#     def forward(self, src, tgt, src_mask, tgt_mask):
+#         "Take in and process masked src and target sequences."
+#         # return self.decode(self.encode(src, src_mask), src_mask,
+#                             # tgt, tgt_mask)
+#         return self.encode(src, src_mask)
+    
+#     def encode(self, src, src_mask):
+#         return self.encoder(self.src_embed(src), src_mask)
+    
+#     # def decode(self, memory, src_mask, tgt, tgt_mask):
+#         # return self.decoder(self.tgt_embed(tgt), memory, src_mask, tgt_mask)
+
+class Encoder(nn.Module):
+    "Core encoder is a stack of N layers"
+    def __init__(self, layer, N):
+        super(Encoder, self).__init__()
+        self.layers = clones(layer, N)
+        self.norm = LayerNorm(layer.size)
+        
+    def forward(self, x):
+        "Pass the input through each layer in turn."
+        for layer in self.layers:
+            x = layer(x)
+        return self.norm(x)
+
+class LayerNorm(nn.Module):
+    "Construct a layernorm module (See citation for details)."
+    def __init__(self, features, eps=1e-6):
+        super(LayerNorm, self).__init__()
+        self.a_2 = nn.Parameter(torch.ones(features))
+        self.b_2 = nn.Parameter(torch.zeros(features))
+        self.eps = eps
+
+    def forward(self, x):
+        mean = x.mean(-1, keepdim=True)
+        std = x.std(-1, keepdim=True)
+        return self.a_2 * (x - mean) / (std + self.eps) + self.b_2
+
+class SublayerConnection(nn.Module):
+    """
+    A residual connection followed by a layer norm.
+    Note for code simplicity the norm is first as opposed to last.
+    """
+    def __init__(self, size, dropout):
+        super(SublayerConnection, self).__init__()
+        self.norm = LayerNorm(size)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x, sublayer):
+        "Apply residual connection to any sublayer with the same size."
+        return x + self.dropout(sublayer(self.norm(x)))
+
+class EncoderLayer(nn.Module):
+    "Encoder is made up of self-attn and feed forward (defined below)"
+    def __init__(self, size, self_attn, feed_forward, dropout):
+        super(EncoderLayer, self).__init__()
+        self.self_attn = self_attn
+        self.feed_forward = feed_forward
+        self.sublayer = clones(SublayerConnection(size, dropout), 2)
+        self.size = size
+
+    def forward(self, x):
+        "Follow Figure 1 (left) for connections."
+        x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x)[0])
+        return self.sublayer[1](x, self.feed_forward)
+
+class PositionwiseFeedForward(nn.Module):
+    "Implements FFN equation."
+    def __init__(self, d_model, d_ff, dropout=0.1):
+        super(PositionwiseFeedForward, self).__init__()
+        self.w_1 = nn.Linear(d_model, d_ff)
+        self.w_2 = nn.Linear(d_ff, d_model)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x):
+        return self.w_2(self.dropout(F.relu(self.w_1(x))))
+
+class PositionalEncoding(nn.Module):
+    "Implement the PE function."
+    def __init__(self, d_model, dropout, max_len=5000):
+        super(PositionalEncoding, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+        
+        # Compute the positional encodings once in log space.
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0., max_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0., d_model, 2) *
+                             -(math.log(10000.0) / d_model))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0)
+        self.register_buffer('pe', pe)
+        
+    def forward(self, x):
+        x = x + Variable(self.pe[:, :x.size(0)], 
+                         requires_grad=False)
+        return self.dropout(x)
+
