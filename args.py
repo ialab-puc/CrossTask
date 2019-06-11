@@ -38,6 +38,11 @@ def parse_args():
         default='/mnt/nas/GrimaRepo/datasets/CrossTask/crosstask_constraints',
         help='path to constraints')
     parser.add_argument(
+        '--save_path',
+        type=str,
+        default='weights/',
+        help='path to save weights')
+    parser.add_argument(
         '--n_train',
         type=int,
         default=30,

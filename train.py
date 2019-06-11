@@ -29,7 +29,6 @@ class Loss(nn.Module):
     def forward(self, O, Y):
         return (Y * (- self.lsm(O))).mean(dim=0).sum()
 
-
 def uniform_assignment(T,K):
     stepsize = float(T) / K
     y = th.zeros(T,K)
@@ -108,7 +107,7 @@ for batch in trainloader:
         annot_path = os.path.join(args.annotation_path,task+'_'+vid+'.csv')
         if task not in Y:
             Y[task] = {}
-        Y[task][vid] = read_assignment(T, K, annot_path)
+        Y[task][vid] = th.tensor(read_assignment(T, K, annot_path), dtype=th.float, requires_grad=True)
 
 # initialize with uniform step assignment
 # Y = {}
@@ -170,14 +169,13 @@ def train_epoch():
             task = sample['task']
             X = sample['X'].cuda() if args.use_gpu else sample['X']
 
-            # Obtain 
+            # Obtain output 
             O = net(X, task).squeeze(0)
+            # Dynamic Programming
             y = np.zeros(O.size(), dtype=np.float32)
             dp(y,-O.detach().cpu().numpy())
-            print(O[0], y[0])
-            print(O[0].max(), y[0].max())
-            loss = loss_fn(th.tensor(y, dtype=th.float), th.tensor(Y[task][vid], dtype=th.float))
-            print(loss)
+            # Calculate loss
+            loss = loss_fn(th.tensor(y, dtype=th.float), Y[task][vid])
             loss.backward()
             cumloss += loss.item()
             optimizer.step()
@@ -194,7 +192,7 @@ def eval():
             vid = sample['vid']
             task = sample['task']
             X = sample['X'].cuda() if args.use_gpu else sample['X']
-            O = lsm(net(X, task))
+            O = lsm(net(X, task).squeeze(0))
             y = np.zeros(O.size(),dtype=np.float32)
             dp(y,-O.detach().cpu().numpy())
             if task not in Y_pred:
@@ -216,10 +214,12 @@ print ('Training...')
 net.train()
 for epoch in range(args.pretrain_epochs):
     cumloss = train_epoch(pretrain=True)
-    print ('Epoch {0}. Loss={1:0.2f}'.format(epoch+1, cumloss))
+    print ('Pretraining Epoch {0}. Loss={1:0.2f}'.format(epoch+1, cumloss))
 for epoch in range(args.epochs):
     cumloss = train_epoch()
     print ('Epoch {0}. Loss={1:0.2f}'.format(args.pretrain_epochs+epoch+1, cumloss))
 
 print ('Evaluating...')
 eval()
+
+th.save(net.state_dict(), args.save_path + 'model.pth')
