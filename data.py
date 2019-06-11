@@ -37,14 +37,31 @@ def get_vids(path):
     return task_vids
 
 def read_assignment(T, K, path):
-    Y = np.zeros([T, K], dtype=np.uint8)
+    Y = np.zeros([T, K + 2], dtype=np.uint8)
     with open(path,'r') as f:
-        for line in f:
+        past = 'start'
+        future = 'end'
+        for i, line in enumerate(f):
             step,start,end = line.strip().split(',')
             start = int(math.floor(float(start)))
             end = int(math.ceil(float(end)))
             step = int(step) - 1
+            
+            # TODO: Asignar valores al inicio y fin del video. Ver que hacer con backgrounds
+            if i == 0:
+                past = K
+                future = int(f[i+1].strip().split(',')[0]) - 1
+            elif i == len(f)-1:
+                past = int(f[i-1].strip().split(',')[0]) - 1
+                future = K+1
+            else:
+                past = int(f[i-1].strip().split(',')[0]) - 1
+                future = int(f[i+1].strip().split(',')[0]) - 1
+
             Y[start:end,step] = 1
+            Y[start:end,past] = 2
+            Y[start:end,future] = 3
+
     return Y
 
 def random_split(task_vids, test_tasks, n_train):
