@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import unicode_literals
 from __future__ import print_function
 
+from comet_ml import Experiment
 from model import Model
 from data import *
 from args import parse_args
@@ -12,6 +13,9 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 
+experiment = Experiment(api_key="PrTtxpZMuQONXSEuJSTOvG2XY",
+                        project_name="crosstask", workspace="rmant")
+
 # class Loss(nn.Module):
 #     def __init__(self, lambd):
 #         super(Loss, self).__init__()
@@ -20,6 +24,7 @@ from torch.utils.data import DataLoader
         
 #     def forward(self, O, Y, C):
 #         return (Y*(self.lambd * C - self.lsm(O))).mean(dim=0).sum()
+
 
 class Loss(nn.Module):
     def __init__(self):
@@ -162,53 +167,56 @@ for batch in trainloader:
 #     return cumloss
 
 def train_epoch():
-    cumloss = 0.
-    for batch in trainloader:
-        for sample in batch:
-            vid = sample['vid']
-            task = sample['task']
-            X = sample['X'].cuda() if args.use_gpu else sample['X']
+    with experiment.train():
+        cumloss = 0.
+        for batch in trainloader:
+            for sample in batch:
+                vid = sample['vid']
+                task = sample['task']
+                X = sample['X'].cuda() if args.use_gpu else sample['X']
 
-            # Obtain output 
-            O = net(X, task).squeeze(0)
-            # Dynamic Programming
-            y = np.zeros(O.size(), dtype=np.float32)
-            dp(y,-O.detach().cpu().numpy())
-            # Calculate loss
-            loss = loss_fn(th.tensor(y, dtype=th.float), Y[task][vid])
-            loss.backward()
-            cumloss += loss.item()
-            optimizer.step()
-            net.zero_grad()
-    return cumloss
+                # Obtain output 
+                O = net(X, task).squeeze(0)
+                # Dynamic Programming
+                y = np.zeros(O.size(), dtype=np.float32)
+                dp(y,-O.detach().cpu().numpy())
+                # Calculate loss
+                loss = loss_fn(th.tensor(y, dtype=th.float), Y[task][vid])
+                loss.backward()
+                cumloss += loss.item()
+                optimizer.step()
+                net.zero_grad()
+        return cumloss
 
 def eval():
-    net.eval()
-    lsm = nn.LogSoftmax(dim=1)
-    Y_pred = {}
-    Y_true = {}
-    for batch in testloader:
-        for sample in batch:
-            vid = sample['vid']
-            task = sample['task']
-            X = sample['X'].cuda() if args.use_gpu else sample['X']
-            O = lsm(net(X, task).squeeze(0))
-            y = np.zeros(O.size(),dtype=np.float32)
-            dp(y,-O.detach().cpu().numpy())
-            if task not in Y_pred:
-                Y_pred[task] = {}
-            Y_pred[task][vid] = y
-            annot_path = os.path.join(args.annotation_path,task+'_'+vid+'.csv')
-            if os.path.exists(annot_path):
-                if task not in Y_true:
-                    Y_true[task] = {}
-                Y_true[task][vid] = read_assignment(*y.shape, annot_path)
-    recalls = get_recalls(Y_true, Y_pred)
-    for task,rec in recalls.items():
-        print('Task {0}. Recall = {1:0.3f}'.format(task, rec))
-    avg_recall = np.mean(list(recalls.values()))
-    print ('Recall: {0:0.3f}'.format(avg_recall))
-    net.train()
+    with experiment.test():
+        net.eval()
+        lsm = nn.LogSoftmax(dim=1)
+        Y_pred = {}
+        Y_true = {}
+        for batch in testloader:
+            for sample in batch:
+                vid = sample['vid']
+                task = sample['task']
+                X = sample['X'].cuda() if args.use_gpu else sample['X']
+                O = lsm(net(X, task).squeeze(0))
+                y = np.zeros(O.size(),dtype=np.float32)
+                dp(y,-O.detach().cpu().numpy())
+                if task not in Y_pred:
+                    Y_pred[task] = {}
+                Y_pred[task][vid] = y
+                annot_path = os.path.join(args.annotation_path,task+'_'+vid+'.csv')
+                if os.path.exists(annot_path):
+                    if task not in Y_true:
+                        Y_true[task] = {}
+                    Y_true[task][vid] = read_assignment(*y.shape, annot_path)
+        recalls = get_recalls(Y_true, Y_pred)
+        for task,rec in recalls.items():
+            print('Task {0}. Recall = {1:0.3f}'.format(task, rec))
+        avg_recall = np.mean(list(recalls.values()))
+        experiment.log_metric('recall', avg_recall)
+        print ('Recall: {0:0.3f}'.format(avg_recall))
+        net.train()
 
 print ('Training...')
 net.train()
