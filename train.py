@@ -56,6 +56,7 @@ def get_recalls(Y_true, Y_pred):
     return recalls
 
 args = parse_args()
+experiment.log_parameters(var(args))
 
 task_vids = get_vids(args.video_csv_path)
 val_vids = get_vids(args.val_csv_path)
