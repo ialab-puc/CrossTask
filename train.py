@@ -62,6 +62,8 @@ def get_recalls(Y_true, Y_pred):
 
 args = parse_args()
 experiment.set_name(args.exp_name)
+experiment.log_parameters(vars(args))
+
 task_vids = get_vids(args.video_csv_path)
 val_vids = get_vids(args.val_csv_path)
 task_vids = {task: [vid for vid in vids if task not in val_vids or vid not in val_vids[task]] for task,vids in task_vids.items()}
@@ -230,8 +232,8 @@ for epoch in range(args.pretrain_epochs):
 for epoch in range(args.epochs):
     cumloss = train_epoch()
     print ('Epoch {0}. Loss={1:0.2f}'.format(args.pretrain_epochs+epoch+1, cumloss))
+    eval()
+# print ('Evaluating...')
+    
 
-print ('Evaluating...')
-eval()
-
-th.save(net.state_dict(), args.save_path + 'model.pth')
+th.save(net.state_dict(), args.save_path + args.exp_name + '.pth')
