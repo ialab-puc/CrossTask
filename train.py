@@ -189,6 +189,7 @@ def train_epoch():
                 cumloss += loss.item()
                 optimizer.step()
                 net.zero_grad()
+        experiment.log_metric('Acumulated Loss', cumloss)
         return cumloss
 
 def eval():
