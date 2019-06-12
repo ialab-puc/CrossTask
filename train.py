@@ -112,7 +112,8 @@ for batch in trainloader:
         annot_path = os.path.join(args.annotation_path,task+'_'+vid+'.csv')
         if task not in Y:
             Y[task] = {}
-        Y[task][vid] = th.tensor(read_assignment(T, K, annot_path), dtype=th.float, requires_grad=True)
+        y = th.tensor(read_assignment(T, K, annot_path), dtype=th.float, requires_grad=True)
+        Y[task][vid] = y.cuda() if args.use_gpu else y
 
 # initialize with uniform step assignment
 # Y = {}
@@ -177,11 +178,8 @@ def train_epoch():
 
                 # Obtain output 
                 O = net(X, task).squeeze(0)
-                # Dynamic Programming
-                y = np.zeros(O.size(), dtype=np.float32)
-                dp(y,-O.detach().cpu().numpy())
                 # Calculate loss
-                loss = loss_fn(th.tensor(y, dtype=th.float), Y[task][vid])
+                loss = loss_fn(O, Y[task][vid])
                 loss.backward()
                 cumloss += loss.item()
                 optimizer.step()
