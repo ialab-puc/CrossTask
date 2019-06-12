@@ -45,7 +45,7 @@ def parse_args():
     parser.add_argument(
         '--n_train',
         type=int,
-        default=30,
+        default=70,
         help='videos per task for training')
     parser.add_argument(
         '--lr',
@@ -118,6 +118,12 @@ def parse_args():
         type=str,
         default='words',
         help='Level of sharing between tasks',
+        )
+    parser.add_argument(
+        '--exp_name',
+        type=str,
+        default='',
+        help='Experiment name',
         )
     args = parser.parse_args()
     return args

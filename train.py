@@ -61,7 +61,7 @@ def get_recalls(Y_true, Y_pred):
     return recalls
 
 args = parse_args()
-
+experiment.set_name(args.exp_name)
 task_vids = get_vids(args.video_csv_path)
 val_vids = get_vids(args.val_csv_path)
 task_vids = {task: [vid for vid in vids if task not in val_vids or vid not in val_vids[task]] for task,vids in task_vids.items()}
