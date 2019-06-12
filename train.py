@@ -27,12 +27,17 @@ experiment = Experiment(api_key="PrTtxpZMuQONXSEuJSTOvG2XY",
 
 
 class Loss(nn.Module):
-    def __init__(self):
+    def __init__(self, past_lambd, future_lambd):
         super(Loss, self).__init__()
         self.lsm = nn.LogSoftmax(dim=1)
+        self.past_lambd = past_lambd
+        self.future_lambd = future_lambd
         
     def forward(self, O, Y):
-        return (Y * (- self.lsm(O))).mean(dim=0).sum()
+        past_loss = (Y[:, :, 0] * (- self.lsm(O[0]))).mean(dim=0).sum()
+        current_loss = (Y[:, :, 1] * (- self.lsm(O[1]))).mean(dim=0).sum()
+        future_loss = (Y[:, :, 2] * (- self.lsm(O[2]))).mean(dim=0).sum()
+        return past_loss * self.past_lambd + current_loss + future_loss * self.future_lambd
 
 def uniform_assignment(T,K):
     stepsize = float(T) / K
@@ -100,7 +105,7 @@ testloader = DataLoader(testset,
 
 net = Model(M, A, args.q).cuda() if args.use_gpu else Model(args.d, M, A, args.q)
 optimizer = optim.Adam(net.parameters(), lr=args.lr)
-loss_fn = Loss()
+loss_fn = Loss(args.past_lambd, args.future_lambd)
 
 Y = {}
 for batch in trainloader:
@@ -112,7 +117,8 @@ for batch in trainloader:
         annot_path = os.path.join(args.annotation_path,task+'_'+vid+'.csv')
         if task not in Y:
             Y[task] = {}
-        Y[task][vid] = th.tensor(read_assignment(T, K, annot_path), dtype=th.float, requires_grad=True)
+        y = th.tensor(read_assignment(T, K, annot_path), dtype=th.float, requires_grad=True)
+        Y[task][vid] = y.cuda() if args.use_gpu else y
 
 # initialize with uniform step assignment
 # Y = {}
@@ -176,12 +182,9 @@ def train_epoch():
                 X = sample['X'].cuda() if args.use_gpu else sample['X']
 
                 # Obtain output 
-                O = net(X, task).squeeze(0)
-                # Dynamic Programming
-                y = np.zeros(O.size(), dtype=np.float32)
-                dp(y,-O.detach().cpu().numpy())
+                O = net(X, task)
                 # Calculate loss
-                loss = loss_fn(th.tensor(y, dtype=th.float), Y[task][vid])
+                loss = loss_fn(O, Y[task][vid])
                 loss.backward()
                 cumloss += loss.item()
                 optimizer.step()
@@ -199,7 +202,7 @@ def eval():
                 vid = sample['vid']
                 task = sample['task']
                 X = sample['X'].cuda() if args.use_gpu else sample['X']
-                O = lsm(net(X, task).squeeze(0))
+                O = lsm(net(X, task)[1].squeeze(0))
                 y = np.zeros(O.size(),dtype=np.float32)
                 dp(y,-O.detach().cpu().numpy())
                 if task not in Y_pred:
@@ -209,7 +212,7 @@ def eval():
                 if os.path.exists(annot_path):
                     if task not in Y_true:
                         Y_true[task] = {}
-                    Y_true[task][vid] = read_assignment(*y.shape, annot_path)
+                    Y_true[task][vid] = read_assignment(*y.shape, annot_path)[:, :, 1]
         recalls = get_recalls(Y_true, Y_pred)
         for task,rec in recalls.items():
             print('Task {0}. Recall = {1:0.3f}'.format(task, rec))

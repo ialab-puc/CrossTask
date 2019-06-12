@@ -102,6 +102,18 @@ def parse_args():
         help='penalty coefficient for temporal cosntraints. Put 0 to use no temporal constraints during training',
         )
     parser.add_argument(
+        '--past_lambd',
+        type=float,
+        default=1,
+        help='penalty for past prediction auxiliary task',
+        )
+    parser.add_argument(
+        '--future_lambd',
+        type=float,
+        default=1,
+        help='penalty for future prediction auxiliary task',
+        )
+    parser.add_argument(
         '--share',
         type=str,
         default='words',
